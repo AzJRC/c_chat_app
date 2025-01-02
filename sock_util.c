@@ -84,8 +84,51 @@ int listenConn(int sfd_client) {
 		if (recv_content == 1 || recv_content == 0) break;  // stop if user sends nothing or closes the connection.
 
 		buff_recv[recv_content] = 0;
-		printf("+ message received: %s\n", buff_recv);
+		printf("+ message received: %s", buff_recv);
+		fflush(stdout);
+
+		//TODO: Check for messages starting with "//" (Commands)
 	}
 
 	return 0;
 } 
+
+
+int threadConnections(int sfd_srv) {
+
+	while (true) {
+		struct acceptedConn *client_conn = acceptNewConn(sfd_srv);
+		if (client_conn->error < 0) {
+			printf("- Erro with AcceptNewConn(): %s.\n", strerror(errno));
+			return -1;
+		}
+		int sfd_client = client_conn->sfd_client;
+			
+
+		// Run threadNewConn() from a new thread pthread_create()
+		pthread_t id;
+		int *arg = malloc(sizeof(int));
+		if (!arg) {
+			printf("Error with malloc(): %s\n", strerror(errno));
+			return -1;
+		}
+		*arg = sfd_client;
+
+		if(pthread_create(&id, NULL, threadNewConn, arg) != 0) {
+			printf("- Error with pthread(): %s\n", strerror(errno));
+			free(arg);
+			return -1;
+		}
+	}
+}
+
+
+void *threadNewConn(void *arg) {
+	int sfd_client = *(int *)arg; 
+	free(arg);
+
+	listenConn(sfd_client);	
+	close(sfd_client);
+
+	return NULL;
+}
