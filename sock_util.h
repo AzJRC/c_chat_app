@@ -24,6 +24,13 @@ struct acceptedConn {
 	int error;
 };
 
+struct reply_info {
+	int sockfd;
+	char *buffer;
+	size_t buffer_s;
+	int flags;
+};
+
 
 int createTCPv4Socket();
 struct sockaddr_in *createV4Sock(char *ip, int port);
@@ -31,6 +38,12 @@ struct acceptedConn * acceptNewConn(int srv_sfd);
 int listenConn(int sfd_client);	
 void *threadNewConn(void *arg);
 int threadConnections(int sfd_srv);
+void *threadReply(void *arg_reply_info);
+int threadReplies(int dst_sfd, char *buffer, size_t buffer_size, int flag);
+int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size);
+void *threadReply(void *arg_reply_info);
+int threadReplies(int dst_sfd, char *buffer, size_t buffer_size, int flag);
+
 
 
 #endif

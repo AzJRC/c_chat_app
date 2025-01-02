@@ -8,20 +8,21 @@
 #define ENDCONN_CMD "//endconn\n"
 
 
-int requestClientID(int sfd) {
+int requestClientID(int sfd, char *response) {
 	
 	if (send(sfd, NEWCONN_CMD, strlen(NEWCONN_CMD), 0) == -1) {
 		return -1;
 	}
 
-	int client_id;
-	//if (recv(sfd, &client_id, sizeof(int), 0) == -1) {
+	printf("+ client_id requested.\n");
+	
+	//receive in clientRecvThread()
+	//if (recv(sfd, response, sizeof(char)*16, 0) == -1) {
 	//	return -1;
 	//}
+	// printf("+ received client id: %s\n", response);
 	
-	client_id = 1111;  // TODO: Remove once server can answer to client commands.
-
-	return client_id;
+	return 0;
 }
 
 
@@ -39,8 +40,8 @@ int main() {
 	printf("+ connection stablished.\n");
 
 	// request a client_id
-	int client_id;
-	if ((client_id = requestClientID(sfd)) < 0) {
+	char client_id;
+	if (requestClientID(sfd, &client_id) < 0) {
 		return -1;
 	}	
 
@@ -48,6 +49,9 @@ int main() {
 	char *line = NULL;
 	size_t line_s = 0;	
 	ssize_t char_count;
+
+	//start clientRecvThread() to receive messages assycronously
+	// clientRecvThread();
 
 	while (true) {
 		if ((char_count = getline(&line, &line_s, stdin)) < 0) {

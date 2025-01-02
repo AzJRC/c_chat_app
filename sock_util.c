@@ -88,10 +88,37 @@ int listenConn(int sfd_client) {
 		fflush(stdout);
 
 		//TODO: Check for messages starting with "//" (Commands)
+		threadReplies(sfd_client, "RECEIVED", strlen("RECEIVED"), 0);
 	}
 
 	return 0;
 } 
+
+
+int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size) {
+	/*
+	 Helper function to run any function with any argument in a sepate thread.
+	 The function will return -1 on error or the thread id on success.
+	*/
+
+	// Allocate memory for the thread argument
+    void *arg_copy = malloc(arg_size);
+    if (!arg_copy) {
+        perror("Error allocating memory");
+        return -1;
+    }
+
+    // Copy the content of the argument into the allocated memory
+    memcpy(arg_copy, routine_arg, arg_size);
+
+	pthread_t id;
+	if(pthread_create(&id, NULL, routine, routine_arg) < 0) {
+		printf("- Error with pthread(): %s.\n", strerror(errno));
+		return -1;
+	}
+
+	return id;
+}
 
 
 int threadConnections(int sfd_srv) {
@@ -103,32 +130,53 @@ int threadConnections(int sfd_srv) {
 			return -1;
 		}
 		int sfd_client = client_conn->sfd_client;
-			
-
-		// Run threadNewConn() from a new thread pthread_create()
-		pthread_t id;
 		int *arg = malloc(sizeof(int));
-		if (!arg) {
-			printf("Error with malloc(): %s\n", strerror(errno));
-			return -1;
-		}
 		*arg = sfd_client;
-
-		if(pthread_create(&id, NULL, threadNewConn, arg) != 0) {
-			printf("- Error with pthread(): %s\n", strerror(errno));
-			free(arg);
-			return -1;
-		}
+			
+		// Run threadNewConn() from a new thread pthread_create()
+		runInThread(threadNewConn, arg, sizeof(arg));
 	}
 }
 
 
-void *threadNewConn(void *arg) {
-	int sfd_client = *(int *)arg; 
-	free(arg);
+void *threadNewConn(void *arg_sfd_client) {
+	int sfd_client = *(int *)arg_sfd_client; 
+	free(arg_sfd_client);
 
 	listenConn(sfd_client);	
 	close(sfd_client);
 
+	return NULL;
+}
+
+
+int threadReplies(int dst_sfd, char *buffer, size_t buffer_size, int flag) {
+	if (!flag) flag = 0;
+	
+	struct reply_info info;
+	info.sockfd = dst_sfd;
+	info.buffer = buffer;
+	info.buffer_s = buffer_size;
+	info.flags = flag;
+	struct reply_info *arg = malloc(sizeof(struct reply_info));
+	if (!arg) {
+		printf("Error with malloc(): %s\n", strerror(errno));
+		return -1;
+	}
+	*arg = info;
+	runInThread(threadReply, arg, sizeof(arg));		
+	
+	return 0;
+}
+
+
+void *threadReply(void *arg_reply_info) {
+	struct reply_info reply = *(struct reply_info *)arg_reply_info;	
+	free(arg_reply_info);
+
+	if (send(reply.sockfd, reply.buffer, reply.buffer_s, reply.flags) < 0) {
+		return NULL;
+	}
+	
 	return NULL;
 }
