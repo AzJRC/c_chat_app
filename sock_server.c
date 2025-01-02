@@ -1,33 +1,52 @@
 /* sock_server.c */
 #include "sock_util.h"
 
+#include <stdlib.h>
+#include <pthread.h>
+
 #define SRV_ADDR ""
 #define SRV_PORT 2357
 #define LST_BACKLOG 2
 
-int processConn(int sfd_client) {
-	/*
-	 Process a connection by listening to a received accepted connection from `acceptedConn()` using
-	 the `listen()^ function.
-	 Loop indifinitely until the connection is closed by the client or an error arise.
-	*/
 
-	char buff_recv[1024];
-	ssize_t recv_content;
+void *threadNewConn(void *arg) {
+	int sfd_client = *(int *)arg; 
+	free(arg);
+
+	listenConn(sfd_client);	
+	close(sfd_client);
+
+	return NULL;
+}
+
+int threadConnections(int sfd_srv) {
+
 	while (true) {
-		if ( (recv_content = recv(sfd_client, buff_recv, 1024, 0)) < 0) {
-			printf("- error with recv(): %s", strerror(errno));
+		struct acceptedConn *client_conn = acceptNewConn(sfd_srv);
+		if (client_conn->error < 0) {
+			printf("- Erro with AcceptNewConn(): %s.\n", strerror(errno));
 			return -1;
 		}
+		int sfd_client = client_conn->sfd_client;
+			
 
-		if (recv_content == 1 || recv_content == 0) break;  // stop if user sends nothing or closes the connection.
+		// Run threadNewConn() from a new thread pthread_create()
+		pthread_t id;
+		int *arg = malloc(sizeof(int));
+		if (!arg) {
+			printf("Error with malloc(): %s\n", strerror(errno));
+			return -1;
+		}
+		*arg = sfd_client;
 
-		buff_recv[recv_content] = 0;
-		printf("+ message received: %s\n", buff_recv);
+		if(pthread_create(&id, NULL, threadNewConn, arg) != 0) {
+			printf("- Error with pthread(): %s\n", strerror(errno));
+			free(arg);
+			return -1;
+		}
 	}
+}
 
-	return 0;
-} 
 
 int main() {
 	// create socket	
@@ -48,17 +67,11 @@ int main() {
 	}
 	printf("+ listen for incomming connections.\n");	
 
-	// accept incoming connections
-	struct acceptedConn *client_conn = acceptNewConn(sfd);
-	int sfd_client = client_conn->sfd_client;
-		
-	// receive and process connections
-	processConn(sfd_client);	
-
+	// accept incoming connections in a thread
+	threadConnections(sfd);
 
 	printf("+ closing sockets...\n");
 
-	close(sfd_client);
 	shutdown(sfd, SHUT_RDWR);
 	
 	printf("+ program end.\n");

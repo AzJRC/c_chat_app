@@ -65,3 +65,27 @@ struct acceptedConn * acceptNewConn(int srv_sfd) {
 	return client_conn;
 }
 
+
+int listenConn(int sfd_client) {
+	/*
+	 Process a connection by listening to a received accepted connection from `acceptedConn()` using
+	 the `listen()^ function.
+	 Loop indifinitely until the connection is closed by the client or an error arise.
+	*/
+
+	char buff_recv[1024];
+	ssize_t recv_content;
+	while (true) {
+		if ( (recv_content = recv(sfd_client, buff_recv, 1024, 0)) < 0) {
+			printf("- error with recv(): %s", strerror(errno));
+			return -1;
+		}
+
+		if (recv_content == 1 || recv_content == 0) break;  // stop if user sends nothing or closes the connection.
+
+		buff_recv[recv_content] = 0;
+		printf("+ message received: %s\n", buff_recv);
+	}
+
+	return 0;
+} 

@@ -26,5 +26,6 @@ struct acceptedConn {
 int createTCPv4Socket();
 struct sockaddr_in *createV4Sock(char *ip, int port);
 struct acceptedConn * acceptNewConn(int srv_sfd);
+int listenConn(int sfd_client);	
 
 #endif
