@@ -6,6 +6,21 @@
 #define SRV_PORT 2357
 #define LST_BACKLOG 2
 
+void *threadServerConsole() {
+	char *line = NULL;
+	size_t line_size = 0;
+	while (true) {
+		printf("> ");
+		ssize_t char_count = getline(&line, &line_size, stdin);
+		line[char_count] = 0;
+		printf("%s", line);
+	}
+}
+
+int runServerConsole() {
+	runInThread(threadServerConsole, NULL, 0);	
+	return 0;
+}
 
 int main() {
 	// create TCP IPv4 socket for the server	
@@ -17,23 +32,22 @@ int main() {
 		printf("- error with bind(): %s.\n", strerror(errno));
 		return -1;
 	}
-	printf("+ address bind succesfull.\n");
 
 	// listen for incomming connections
 	if (listen(sfd, LST_BACKLOG) == -1) {
 		printf("- error with listen(): %s.\n", strerror(errno));
 		return -1;
 	}
-	printf("+ listen for incomming connections.\n");	
+
+	// start server console management
+	runServerConsole();
 
 	// accept incoming connections in a thread
 	threadConnections(sfd);
 
-	printf("+ closing sockets...\n");
 
 	shutdown(sfd, SHUT_RDWR);
 	
-	printf("+ program end.\n");
 
 	return 0;
 }

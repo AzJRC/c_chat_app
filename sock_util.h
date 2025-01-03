@@ -19,6 +19,10 @@
 #include <malloc.h>
 #include <stdarg.h>
 
+// macros
+#define LOG_DEBUG_MESSAGE(msg, ...) log_message(DEBUG, msg, #__VA_ARGS__)
+#define LOG_INFO_MESSAGE(msg, ...) log_message(INFO, msg, #__VA_ARGS__)
+#define LOG_ERROR_MESSAGE(msg, ...) log_message(ERROR, msg, #__VA_ARGS__)
 
 // Type definitions
 typedef enum { DEBUG, INFO, ERROR } LogLevel;

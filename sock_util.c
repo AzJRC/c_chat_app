@@ -30,12 +30,6 @@ void log_message(LogLevel level, const char *log_msg, ...) {
 	return;
 } 
 
-//log_message macros
-#define LOG_DEBUG_MESSAGE(msg, ...) log_message(DEBUG, msg, #__VA_ARGS__)
-#define LOG_INFO_MESSAGE(msg, ...) log_message(INFO, msg, #__VA_ARGS__)
-#define LOG_ERROR_MESSAGE(msg, ...) log_message(ERROR, msg, #__VA_ARGS__)
-
-
 int createTCPv4Socket() {
 	/*
 	 Create a socket file descriptor using the socket() function.
@@ -46,7 +40,7 @@ int createTCPv4Socket() {
 		LOG_ERROR_MESSAGE("Error with socket(): %s.\n", strerror(errno));
 		return -1;
 	}
-	LOG_DEBUG_MESSAGE("IPv4 TCP socket created succesfully. SocketFD %d.\n", sfd);
+	LOG_DEBUG_MESSAGE("IPv4 TCP socket created succesfully.\n");
 	return sfd;
 }
 
@@ -97,7 +91,7 @@ struct acceptedConn * acceptNewConn(int srv_sfd) {
 	client_conn->sock_client = client_addr;
 	client_conn->error = 0;
 
-	LOG_DEBUG_MESSAGE("Client connection accepted: SocketFD %d.\n", client_conn.sfd_client);
+	LOG_DEBUG_MESSAGE("Client connection accepted.\n");
 	return client_conn;
 }
 
@@ -115,22 +109,23 @@ int listenConn(int sfd_client) {
 
 		// TODO: Recv content in another thread.
 		if ( (recv_content = recv(sfd_client, buff_recv, 1024, 0)) < 0) {
-			if (errno == 104) {  // if connection reset exit gracefully
-				LOG_DEBUG_MESSAGE("Client disconnected. ClientFD %d.\n", sfd_client);
-				break;
-			}
-
 			printf("- error with recv(): %s.\n", strerror(errno));
 			return -1;
 		}
 		buff_recv[recv_content - 1] = 0;  // We assume all received messages end with a breakline \n.
 
+		// disconnected client
+		if (recv_content == 0) {
+			LOG_DEBUG_MESSAGE("Client connection has ended.\n");
+			break;
+		}
 
-		LOG_DEBUG_MESSAGE("Client [SocketFD %d] message received: ", sfd_client);
+
+		LOG_DEBUG_MESSAGE("Client message received: ");
 		printf("[ %s ]\n", buff_recv);
 
 		//TODO: Check for messages starting with "//" (Commands)
-		threadReplies(sfd_client, "RECEIVED", strlen("RECEIVED"), 0);
+		// threadReplies(sfd_client, "RECEIVED", strlen("RECEIVED"), 0);
 	}
 
 	return 0;
@@ -144,23 +139,25 @@ int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size) {
 	*/
 
 	// Allocate memory for the thread argument
-    void *arg_copy = malloc(arg_size);
-    if (!arg_copy) {
-		LOG_ERROR_MESSAGE("Error with malloc(): %s.\n", strerror(errno));
-        return -1;
+    void *arg_copy = NULL; 
+	if (arg_size > 0) {
+		arg_copy = malloc(sizeof(arg_size));
+		if (!arg_copy) {
+			LOG_ERROR_MESSAGE("Error with malloc(): %s.\n", strerror(errno));
+			return -1;
+		}
+		// Copy the content of the argument into the allocated memory
+		memcpy(arg_copy, routine_arg, arg_size);
     }
 
-    // Copy the content of the argument into the allocated memory
-    memcpy(arg_copy, routine_arg, arg_size);
-
+	// Run routine(void *arg_copy) in a thread
 	pthread_t id;
-	if(pthread_create(&id, NULL, routine, routine_arg) < 0) {
+	if(pthread_create(&id, NULL, routine, arg_copy) < 0) {
 		LOG_ERROR_MESSAGE("Error with pthread(): %s.\n", strerror(errno));
 		return -1;
 	}
-	LOG_DEBUG_MESSAGE("Thread created succesfully: ID %02x.\n", id);
 
-	return id;
+	return 0;
 }
 
 
@@ -172,7 +169,6 @@ int threadConnections(int sfd_srv) {
 			printf("- Error with AcceptNewConn(): %s.\n", strerror(errno));
 			return -1;
 		}
-		LOG_DEBUG_MESSAGE("Client connection accepted: SocketFD %d.\n", client_conn.sfd_client);
 
 		int sfd_client = client_conn->sfd_client;
 		int *arg = malloc(sizeof(int));
@@ -186,6 +182,8 @@ int threadConnections(int sfd_srv) {
 
 
 void *threadNewConn(void *arg_sfd_client) {
+	LOG_DEBUG_MESSAGE("Thread created succesfully: ID %lu.\n", (unsigned long)pthread_self());
+
 	int sfd_client = *(int *)arg_sfd_client; 
 	free(arg_sfd_client);
 
@@ -218,6 +216,8 @@ int threadReplies(int dst_sfd, char *buffer, size_t buffer_size, int flag) {
 
 
 void *threadReply(void *arg_reply_info) {
+	LOG_DEBUG_MESSAGE("Thread created succesfully: ID %lu.\n", (unsigned long)pthread_self());
+
 	struct reply_info reply = *(struct reply_info *)arg_reply_info;	
 	free(arg_reply_info);
 
