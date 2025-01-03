@@ -1,9 +1,10 @@
 #ifndef SOCKETUTIL_SOCKETUTIL_H
 
+// Compatibility
 #define SOCKETUTIL_SOCKETUTIL_H
 #define _POSIX_C_SOURCE 200809L
 
-
+//Dependencies
 #include <unistd.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -16,8 +17,14 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <malloc.h>
+#include <stdarg.h>
 
 
+// Type definitions
+typedef enum { DEBUG, INFO, ERROR } LogLevel;
+
+
+// Struct definitions
 struct acceptedConn {
 	int sfd_client;
 	struct sockaddr_in sock_client;
@@ -32,6 +39,7 @@ struct reply_info {
 };
 
 
+// Function definitions
 int createTCPv4Socket();
 struct sockaddr_in *createV4Sock(char *ip, int port);
 struct acceptedConn * acceptNewConn(int srv_sfd);
@@ -43,7 +51,8 @@ int threadReplies(int dst_sfd, char *buffer, size_t buffer_size, int flag);
 int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size);
 void *threadReply(void *arg_reply_info);
 int threadReplies(int dst_sfd, char *buffer, size_t buffer_size, int flag);
-
+void log_message(LogLevel level, const char *log_msg, ...);
+int _print_routine_name(const char *routine_name, void *(*routine)(void *));
 
 
 #endif
