@@ -47,6 +47,8 @@ int runTCPServer(char *srv_addr, int srv_port, int backlog) {
 		printf("- error with listen(): %s.\n", strerror(errno));
 		return -1;
 	}
+
+
 	LOG_DEBUG_MESSAGE("Listen for incomming connections.\n");	
 
 	return server_sfd;
@@ -103,8 +105,8 @@ struct acceptedConn * acceptNewConn(int srv_sfd) {
 
 	// accept the connection
 	struct sockaddr_in client_addr;
-	unsigned int clientaddr_s = sizeof(struct sockaddr_in);
-	sfd_client = accept(srv_sfd, (struct sockaddr *)&client_addr, &clientaddr_s);  // creates the sfd of the client in the server side.
+	unsigned int clientaddr_size = sizeof(struct sockaddr_in);
+	sfd_client = accept(srv_sfd, (struct sockaddr *)&client_addr, &clientaddr_size);  // creates the sfd of the client in the server side
 	if (sfd_client < 0) {
 		LOG_ERROR_MESSAGE("Error with accept(): %s.\n", strerror(errno));
 		client_conn->error = errno;
@@ -146,7 +148,6 @@ int listenConn(int sfd_client) {
 
 		buff_recv[recv_content - 1] = 0;  // We assume all received messages end with a breakline \n.
 
-
 		LOG_DEBUG_MESSAGE("Client [SocketFD %d] message received: ", sfd_client);
 		printf("[ %s ]\n", buff_recv);
 
@@ -185,6 +186,44 @@ int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size) {
 }
 
 
+struct acceptedConn * getConnectionList() {
+	static struct acceptedConn *conn_list = NULL;
+	static int list_size = INIT_MAXIMUM_CONN_LIST;
+
+	if (conn_list == NULL) {
+		pthread_mutex_lock(&conn_list_mutex);
+		conn_list = malloc(sizeof(struct acceptedConn) * list_size);
+		pthread_mutex_unlock(&conn_list_mutex);
+	}
+			
+	return conn_list;
+}
+
+int addConnectionToConnectionList(struct acceptedConn *client_conn, int *conn_count) {
+    pthread_mutex_lock(&conn_list_mutex);
+
+    struct acceptedConn *conn_list = getConnectionList();
+    static int list_size = INIT_MAXIMUM_CONN_LIST;
+
+    // Check if resizing is needed
+    if (*conn_count >= list_size) {
+        list_size *= 2;
+        conn_list = realloc(conn_list, sizeof(struct acceptedConn) * list_size);
+        if (conn_list == NULL) {
+            perror("realloc failed");
+            pthread_mutex_unlock(&conn_list_mutex);
+            return -1;
+        }
+    }
+
+    conn_list[*conn_count] = *client_conn;
+    (*conn_count)++;
+
+    pthread_mutex_unlock(&conn_list_mutex);
+    return 0;
+}
+
+
 int runThreadConnections(int sfd_srv) {	
 	/*
 	 Start running each client connection in a separate thread.
@@ -192,17 +231,24 @@ int runThreadConnections(int sfd_srv) {
 	 corresponding thread.
 	*/
 
+	// create connection list
+	static int connection_count = 0;
+	getConnectionList();  // Create the connection list
+
 	while (true) {
 		struct acceptedConn *client_conn = acceptNewConn(sfd_srv);
 		if (client_conn->error < 0) {
 			printf("- Error with AcceptNewConn(): %s.\n", strerror(errno));
 			return -1;
 		}
-		LOG_DEBUG_MESSAGE("Client connection accepted: SocketFD %d.\n", client_conn.sfd_client);
+
+		printf("Client connection accepted: SocketFD %d.\n", client_conn->sfd_client);
+		LOG_DEBUG_MESSAGE("Client connection accepted: SocketFD %d.\n", client_conn->sfd_client);
 
 		int sfd_client = client_conn->sfd_client;
 		int *sfd_client_ptr = &sfd_client;
-			
+		addConnectionToConnectionList(client_conn, &connection_count);
+
 		// Run threadNewConn() from a new thread pthread_create()
 		LOG_DEBUG_MESSAGE("Calling runInThead() from runThreadConnections().\n");
 		runInThread(threadConnections, sfd_client_ptr, sizeof(sfd_client));

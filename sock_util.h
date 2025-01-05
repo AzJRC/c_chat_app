@@ -19,8 +19,11 @@
 #include <malloc.h>
 #include <stdarg.h>
 
+// Constants
+#define INIT_MAXIMUM_CONN_LIST 5
+
 // Macros
-#define LOG_DEBUG_MESSAGE(msg, ...) handleLogs(DEBUG, msg, #__VA_ARGS__)
+#define LOG_DEBUG_MESSAGE(msg, ...) handleLogs(DEBUG, msg, ##__VA_ARGS__)
 #define LOG_INFO_MESSAGE(msg, ...) handleLogs(INFO, msg, #__VA_ARGS__)
 #define LOG_ERROR_MESSAGE(msg, ...) handleLogs(ERROR, msg, #__VA_ARGS__)
 
@@ -41,6 +44,9 @@ struct reply_info {
 	size_t buffer_s;
 	int flags;
 };
+
+//Mutex
+static pthread_mutex_t conn_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 
 // Function definitions
