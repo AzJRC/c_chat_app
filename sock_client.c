@@ -29,7 +29,7 @@ int requestClientID(int sfd, char *response) {
 int main() {
 		
 	int sfd = createTCPv4Socket();	
-	struct sockaddr_in *addr = createV4Sock(SRV_ADDR, SRV_PORT);	
+	struct sockaddr_in *addr = createIPv4Sockaddr(SRV_ADDR, SRV_PORT);	
 
 	// connect to the address using the socket.
 	if (connect(sfd, (struct sockaddr *) addr, sizeof(*addr)) == -1) {

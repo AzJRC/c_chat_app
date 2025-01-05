@@ -6,34 +6,17 @@
 #define SRV_PORT 2357
 #define LST_BACKLOG 2
 
-
 int main() {
-	// create TCP IPv4 socket for the server	
-	int sfd = createTCPv4Socket();		
-	struct sockaddr_in *addr = createV4Sock(SRV_ADDR, SRV_PORT);
 
-	// assign host's address and port to the socket so that listen() can work
-	if (bind(sfd, (struct sockaddr *) addr, sizeof(*addr)) == -1) {
-		printf("- error with bind(): %s.\n", strerror(errno));
+	int server_sfd;
+	if ((server_sfd = runTCPServer(SRV_ADDR, SRV_PORT, LST_BACKLOG)) < 0) {
 		return -1;
 	}
-	printf("+ address bind succesfull.\n");
 
-	// listen for incomming connections
-	if (listen(sfd, LST_BACKLOG) == -1) {
-		printf("- error with listen(): %s.\n", strerror(errno));
-		return -1;
-	}
-	printf("+ listen for incomming connections.\n");	
+	runThreadConnections(server_sfd);
 
-	// accept incoming connections in a thread
-	threadConnections(sfd);
-
-	printf("+ closing sockets...\n");
-
-	shutdown(sfd, SHUT_RDWR);
-	
-	printf("+ program end.\n");
+	shutdown(server_sfd, SHUT_RDWR);
+	LOG_INFO_MESSAGE("Application closed.\n");	
 
 	return 0;
 }

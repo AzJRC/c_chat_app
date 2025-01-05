@@ -19,6 +19,10 @@
 #include <malloc.h>
 #include <stdarg.h>
 
+// Macros
+#define LOG_DEBUG_MESSAGE(msg, ...) handleLogs(DEBUG, msg, #__VA_ARGS__)
+#define LOG_INFO_MESSAGE(msg, ...) handleLogs(INFO, msg, #__VA_ARGS__)
+#define LOG_ERROR_MESSAGE(msg, ...) handleLogs(ERROR, msg, #__VA_ARGS__)
 
 // Type definitions
 typedef enum { DEBUG, INFO, ERROR } LogLevel;
@@ -40,19 +44,22 @@ struct reply_info {
 
 
 // Function definitions
+void handleLogs(LogLevel level, const char *log_msg, ...);
+
+int runTCPServer(char *srv_addr, int srv_port, int backlog);
 int createTCPv4Socket();
-struct sockaddr_in *createV4Sock(char *ip, int port);
+struct sockaddr_in *createIPv4Sockaddr(char *ip, int port);
 struct acceptedConn * acceptNewConn(int srv_sfd);
+
 int listenConn(int sfd_client);	
-void *threadNewConn(void *arg);
-int threadConnections(int sfd_srv);
-void *threadReply(void *arg_reply_info);
-int threadReplies(int dst_sfd, char *buffer, size_t buffer_size, int flag);
+
 int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size);
+
+int runThreadConnections(int sfd_srv);
+void *threadConnections(void *arg);
+
+int runThreadReply(int dst_sfd, char *buffer, size_t buffer_size, int flag);
 void *threadReply(void *arg_reply_info);
-int threadReplies(int dst_sfd, char *buffer, size_t buffer_size, int flag);
-void log_message(LogLevel level, const char *log_msg, ...);
-int _print_routine_name(const char *routine_name, void *(*routine)(void *));
 
 
 #endif
