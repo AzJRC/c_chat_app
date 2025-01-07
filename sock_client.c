@@ -7,24 +7,44 @@
 #define NEWCONN_CMD "//newconn\n"
 #define ENDCONN_CMD "//endconn\n"
 
+void *threadRecv(void *sfd_arg) {
 
-int requestClientID(int sfd, char *response) {
-	
-	if (send(sfd, NEWCONN_CMD, strlen(NEWCONN_CMD), 0) == -1) {
-		return -1;
+	int sfd = *(int *)sfd_arg;
+	free(sfd_arg);
+
+	char buffer[1024];
+	while(true) {
+		
+		ssize_t char_count = recv(sfd, buffer, sizeof(buffer)-1, 0);
+		if (char_count < 0) {
+			LOG_ERROR_MESSAGE("Error with recv(): %s.\n", strerror(errno));
+			return NULL;
+		}
+
+		if (char_count == 0) break;
+
+		buffer[char_count] = 0;
+		LOG_INFO_MESSAGE("Message received: [ %s ]\n", buffer);
+
 	}
 
-	printf("+ client_id requested.\n");
-	
-	//receive in clientRecvThread()
-	//if (recv(sfd, response, sizeof(char)*16, 0) == -1) {
-	//	return -1;
-	//}
-	// printf("+ received client id: %s\n", response);
-	
+	close(sfd);
+
 	return 0;
 }
 
+
+void runThreadRecv(int sfd) {
+	int *sfd_ptr = malloc(sizeof(int));  // Allocate memory
+    if (!sfd_ptr) {
+        LOG_ERROR_MESSAGE("Error with malloc(): %s.\n", strerror(errno));
+        return;
+    }
+
+    *sfd_ptr = sfd;  // Store the value of sfd in allocated memory
+	pthread_t id;
+	pthread_create(&id, NULL, threadRecv, sfd_ptr);
+}
 
 int main() {
 		
@@ -37,21 +57,14 @@ int main() {
 		return -1; 
 	}
 
-	printf("+ connection stablished.\n");
 
-	// request a client_id
-	char client_id;
-	if (requestClientID(sfd, &client_id) < 0) {
-		return -1;
-	}	
+	//start clientRecvThread() to receive messages assycronously
+	runThreadRecv(sfd);
 
 	// beginning of chat application
 	char *line = NULL;
 	size_t line_s = 0;	
 	ssize_t char_count;
-
-	//start clientRecvThread() to receive messages assycronously
-	// clientRecvThread();
 
 	while (true) {
 		if ((char_count = getline(&line, &line_s, stdin)) < 0) {
@@ -68,11 +81,6 @@ int main() {
 		if (send(sfd, line, char_count, 0) == -1) {
 			return -1;
 		}
-
-		// receive meesages in a different thread
-		//	char buff_recv[1024];
-		//	if (recv(sfd, buff_recv, 1024, 0) == -1) return -1;
-		//	printf("+ message received: %s\n", buff_recv);
 	}	
 	
 	close(sfd);

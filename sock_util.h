@@ -24,8 +24,8 @@
 
 // Macros
 #define LOG_DEBUG_MESSAGE(msg, ...) handleLogs(DEBUG, msg, ##__VA_ARGS__)
-#define LOG_INFO_MESSAGE(msg, ...) handleLogs(INFO, msg, #__VA_ARGS__)
-#define LOG_ERROR_MESSAGE(msg, ...) handleLogs(ERROR, msg, #__VA_ARGS__)
+#define LOG_INFO_MESSAGE(msg, ...) handleLogs(INFO, msg, ##__VA_ARGS__)
+#define LOG_ERROR_MESSAGE(msg, ...) handleLogs(ERROR, msg, ##__VA_ARGS__)
 
 // Type definitions
 typedef enum { DEBUG, INFO, ERROR } LogLevel;

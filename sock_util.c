@@ -121,6 +121,62 @@ struct acceptedConn * acceptNewConn(int srv_sfd) {
 }
 
 
+//BUG We should not use global variables
+struct acceptedConn connections_list[10];
+int connections_count = 0;
+
+int runThreadConnections(int sfd_srv) {	
+	/*
+	 Start running each client connection in a separate thread.
+	 Client messages are handled within a thread in each client's 
+	 corresponding thread.
+	*/
+
+	while (true) {
+		struct acceptedConn *client_conn = acceptNewConn(sfd_srv);
+		if (client_conn->error < 0) {
+			printf("- Error with AcceptNewConn(): %s.\n", strerror(errno));
+			return -1;
+		}
+		connections_list[connections_count] = *client_conn;
+		connections_count += 1;
+
+		LOG_DEBUG_MESSAGE("Client connection accepted: SocketFD %d.\n", client_conn->sfd_client);
+		LOG_DEBUG_MESSAGE("Connections count: %d.\n", connections_count);
+
+		int sfd_client = client_conn->sfd_client;
+		int *sfd_client_ptr = &sfd_client;
+
+		// Run threadNewConn() from a new thread pthread_create()
+		LOG_DEBUG_MESSAGE("Calling runInThead() from runThreadConnections().\n");
+		runInThread(threadConnections, sfd_client_ptr, sizeof(sfd_client));
+	}
+}
+
+
+void *threadConnections(void *arg_sfd_client) {
+	int sfd_client = *(int *)arg_sfd_client; 
+	free(arg_sfd_client);
+
+	listenConn(sfd_client);	
+	close(sfd_client);
+
+	return NULL;
+}
+
+void broadcastMessage(char *buffer, int original_sender) {
+	
+	for (int i = 0; i < connections_count; i++) {
+		int client_sfd = connections_list[i].sfd_client;
+
+		if (client_sfd == original_sender) continue;
+		
+		send(client_sfd, buffer, strlen(buffer), 0);
+	}
+
+	return;
+}
+
 int listenConn(int sfd_client) {
 	/*
 	 Process a connection by listening to a received accepted connection from `acceptedConn()` using
@@ -130,14 +186,10 @@ int listenConn(int sfd_client) {
 
 	char buff_recv[1024];
 	ssize_t recv_content = 0;
-	while (true) {
-		//BUG Verify the recv_content errno case and when recv_content = 1 || 0.
 
-		if ( (recv_content = recv(sfd_client, buff_recv, 1024, 0)) < 0) {
-			if (errno == 104) {  // if connection reset exit gracefully
-				LOG_DEBUG_MESSAGE("Client disconnected. ClientFD %d.\n", sfd_client);
-				break;
-			}
+	while (true) {
+		recv_content = recv(sfd_client, buff_recv, 1024, 0);
+		if (recv_content < 0) {
 			printf("- error with recv(): %s.\n", strerror(errno));
 			return -1;
 		}
@@ -151,8 +203,7 @@ int listenConn(int sfd_client) {
 		LOG_DEBUG_MESSAGE("Client [SocketFD %d] message received: ", sfd_client);
 		printf("[ %s ]\n", buff_recv);
 
-		//TODO: Check for messages starting with "//" (Commands)
-		// runThreadReplies(sfd_client, "RECEIVED", strlen("RECEIVED"), 0);
+		broadcastMessage(buff_recv, sfd_client);
 	}
 
 	return 0;
@@ -186,117 +237,5 @@ int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size) {
 }
 
 
-struct acceptedConn * getConnectionList() {
-	static struct acceptedConn *conn_list = NULL;
-	static int list_size = INIT_MAXIMUM_CONN_LIST;
-
-	if (conn_list == NULL) {
-		pthread_mutex_lock(&conn_list_mutex);
-		conn_list = malloc(sizeof(struct acceptedConn) * list_size);
-		pthread_mutex_unlock(&conn_list_mutex);
-	}
-			
-	return conn_list;
-}
-
-int addConnectionToConnectionList(struct acceptedConn *client_conn, int *conn_count) {
-    pthread_mutex_lock(&conn_list_mutex);
-
-    struct acceptedConn *conn_list = getConnectionList();
-    static int list_size = INIT_MAXIMUM_CONN_LIST;
-
-    // Check if resizing is needed
-    if (*conn_count >= list_size) {
-        list_size *= 2;
-        conn_list = realloc(conn_list, sizeof(struct acceptedConn) * list_size);
-        if (conn_list == NULL) {
-            perror("realloc failed");
-            pthread_mutex_unlock(&conn_list_mutex);
-            return -1;
-        }
-    }
-
-    conn_list[*conn_count] = *client_conn;
-    (*conn_count)++;
-
-    pthread_mutex_unlock(&conn_list_mutex);
-    return 0;
-}
-
-
-int runThreadConnections(int sfd_srv) {	
-	/*
-	 Start running each client connection in a separate thread.
-	 Client messages are handled within a thread in each client's 
-	 corresponding thread.
-	*/
-
-	// create connection list
-	static int connection_count = 0;
-	getConnectionList();  // Create the connection list
-
-	while (true) {
-		struct acceptedConn *client_conn = acceptNewConn(sfd_srv);
-		if (client_conn->error < 0) {
-			printf("- Error with AcceptNewConn(): %s.\n", strerror(errno));
-			return -1;
-		}
-
-		printf("Client connection accepted: SocketFD %d.\n", client_conn->sfd_client);
-		LOG_DEBUG_MESSAGE("Client connection accepted: SocketFD %d.\n", client_conn->sfd_client);
-
-		int sfd_client = client_conn->sfd_client;
-		int *sfd_client_ptr = &sfd_client;
-		addConnectionToConnectionList(client_conn, &connection_count);
-
-		// Run threadNewConn() from a new thread pthread_create()
-		LOG_DEBUG_MESSAGE("Calling runInThead() from runThreadConnections().\n");
-		runInThread(threadConnections, sfd_client_ptr, sizeof(sfd_client));
-	}
-}
-
-
-void *threadConnections(void *arg_sfd_client) {
-	int sfd_client = *(int *)arg_sfd_client; 
-	free(arg_sfd_client);
-
-	listenConn(sfd_client);	
-	close(sfd_client);
-
-	return NULL;
-}
-
-
-int runThreadReply(int dst_sfd, char *buffer, size_t buffer_size, int flag) {
-	if (!flag) flag = 0;
-	
-	struct reply_info info;
-	info.sockfd = dst_sfd;
-	info.buffer = buffer;
-	info.buffer_s = buffer_size;
-	info.flags = flag;
-	struct reply_info *arg = malloc(sizeof(struct reply_info));
-	if (!arg) {
-		LOG_ERROR_MESSAGE("Error with malloc(): %s.\n", strerror(errno));
-		return -1;
-	}
-	*arg = info;
-	LOG_DEBUG_MESSAGE("Calling runInThead() from runThreadReplies().\n");
-	runInThread(threadReply, arg, sizeof(arg));		
-	
-	return 0;
-}
-
-
-void *threadReply(void *arg_reply_info) {
-	struct reply_info reply = *(struct reply_info *)arg_reply_info;	
-	free(arg_reply_info);
-
-	if (send(reply.sockfd, reply.buffer, reply.buffer_s, reply.flags) < 0) {
-		return NULL;
-	}
-	
-	return NULL;
-}
 
 
