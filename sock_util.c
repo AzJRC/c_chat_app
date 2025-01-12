@@ -31,30 +31,6 @@ void handleLogs(LogLevel level, const char *log_msg, ...) {
 } 
 
 
-int runTCPServer(char *srv_addr, int srv_port, int backlog) {
-	int server_sfd = createTCPv4Socket();		
-	
-	struct sockaddr_in *addr = createIPv4Sockaddr(srv_addr, srv_port);
-
-	if (bind(server_sfd, (struct sockaddr *) addr, sizeof(*addr)) == -1) {
-		printf("- error with bind(): %s.\n", strerror(errno));
-		return -1;
-	}
-	LOG_DEBUG_MESSAGE("Address bind succesfull.\n");
-
-	// listen for incomming connections
-	if (listen(server_sfd, backlog) == -1) {
-		printf("- error with listen(): %s.\n", strerror(errno));
-		return -1;
-	}
-
-
-	LOG_DEBUG_MESSAGE("Listen for incomming connections.\n");	
-
-	return server_sfd;
-}
-
-
 int createTCPv4Socket() {
 	/*
 	 Create a socket file descriptor using the socket() function.
@@ -71,11 +47,11 @@ int createTCPv4Socket() {
 }
 
 
-struct sockaddr_in *createIPv4Sockaddr(char *ip, int port) { 
+struct sockaddr_in *createSockaddrStruct(char *ip, int port) {
 	/*
 	 Create a IPv4 socket address using `sockaddr_in`.
-	 This function allocated memory for the `sockaddr_in` structure that needs to be free
-	 manually.
+	 This function allocated memory for the `sockaddr_in`
+     structure that needs to be free manually.
 	*/
 
 	struct sockaddr_in *addr = malloc(sizeof(struct sockaddr_in));  // sockaddr_in is the struct used por AF_INET (IPv4).
@@ -91,125 +67,6 @@ struct sockaddr_in *createIPv4Sockaddr(char *ip, int port) {
 }
 
 
-struct acceptedConn * acceptNewConn(int srv_sfd) {
-	/*
-	 Accept a client connection using accept().
-	 This functions allocates memoery for the client socket information that needs to be free
-	 manually.
-	 This functions returns a pointer to a structure called `acceptedConn`
-	 In case of error, `acceptedConn` will store the errno number in the `error` entry.
-	*/
-
-	int sfd_client;
-	struct acceptedConn *client_conn = malloc(sizeof(struct acceptedConn));  // allocate memoery for client_conn struct information.
-
-	// accept the connection
-	struct sockaddr_in client_addr;
-	unsigned int clientaddr_size = sizeof(struct sockaddr_in);
-	sfd_client = accept(srv_sfd, (struct sockaddr *)&client_addr, &clientaddr_size);  // creates the sfd of the client in the server side
-	if (sfd_client < 0) {
-		LOG_ERROR_MESSAGE("Error with accept(): %s.\n", strerror(errno));
-		client_conn->error = errno;
-		return client_conn;
-	}
-
-	client_conn->sfd_client = sfd_client;
-	client_conn->sock_client = client_addr;
-	client_conn->error = 0;
-
-	return client_conn;
-}
-
-
-//BUG We should not use global variables
-struct acceptedConn connections_list[10];
-int connections_count = 0;
-
-int runThreadConnections(int sfd_srv) {	
-	/*
-	 Start running each client connection in a separate thread.
-	 Client messages are handled within a thread in each client's 
-	 corresponding thread.
-	*/
-
-	while (true) {
-		struct acceptedConn *client_conn = acceptNewConn(sfd_srv);
-		if (client_conn->error < 0) {
-			printf("- Error with AcceptNewConn(): %s.\n", strerror(errno));
-			return -1;
-		}
-		connections_list[connections_count] = *client_conn;
-		connections_count += 1;
-
-		LOG_DEBUG_MESSAGE("Client connection accepted: SocketFD %d.\n", client_conn->sfd_client);
-		LOG_DEBUG_MESSAGE("Connections count: %d.\n", connections_count);
-
-		int sfd_client = client_conn->sfd_client;
-		int *sfd_client_ptr = &sfd_client;
-
-		// Run threadNewConn() from a new thread pthread_create()
-		LOG_DEBUG_MESSAGE("Calling runInThead() from runThreadConnections().\n");
-		runInThread(threadConnections, sfd_client_ptr, sizeof(sfd_client));
-	}
-}
-
-
-void *threadConnections(void *arg_sfd_client) {
-	int sfd_client = *(int *)arg_sfd_client; 
-	free(arg_sfd_client);
-
-	listenConn(sfd_client);	
-	close(sfd_client);
-
-	return NULL;
-}
-
-void broadcastMessage(char *buffer, int original_sender) {
-	
-	for (int i = 0; i < connections_count; i++) {
-		int client_sfd = connections_list[i].sfd_client;
-
-		if (client_sfd == original_sender) continue;
-		
-		send(client_sfd, buffer, strlen(buffer), 0);
-	}
-
-	return;
-}
-
-int listenConn(int sfd_client) {
-	/*
-	 Process a connection by listening to a received accepted connection from `acceptedConn()` using
-	 the `listen()^ function.
-	 Loop indifinitely until the connection is closed by the client or an error arise.
-	*/
-
-	char buff_recv[1024];
-	ssize_t recv_content = 0;
-
-	while (true) {
-		recv_content = recv(sfd_client, buff_recv, 1024, 0);
-		if (recv_content < 0) {
-			printf("- error with recv(): %s.\n", strerror(errno));
-			return -1;
-		}
-
-		if(recv_content == 1 || recv_content == 0) {
-			break;
-		}
-
-		buff_recv[recv_content - 1] = 0;  // We assume all received messages end with a breakline \n.
-
-		LOG_DEBUG_MESSAGE("Client [SocketFD %d] message received: ", sfd_client);
-		printf("[ %s ]\n", buff_recv);
-
-		broadcastMessage(buff_recv, sfd_client);
-	}
-
-	return 0;
-} 
-
-
 int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size) {
 	/*
 	 Helper function to run any function with any argument in a sepate thread.
@@ -217,25 +74,23 @@ int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size) {
 	*/
 
 	// Allocate memory for the thread argument
-    void *arg_copy = malloc(arg_size);
-    if (!arg_copy) {
+    void *routine_arg_copy = malloc(arg_size);
+    if (!routine_arg_copy) {
 		LOG_ERROR_MESSAGE("Error with malloc(): %s.\n", strerror(errno));
         return -1;
     }
 
     // Copy the content of the argument into the allocated memory
-    memcpy(arg_copy, routine_arg, arg_size);
+    memcpy(routine_arg_copy, routine_arg, arg_size);
 
-	pthread_t id;
-	if(pthread_create(&id, NULL, routine, arg_copy) < 0) {
+	pthread_t tid = pthread_create(&tid, NULL, routine, routine_arg_copy);
+	if(tid < 0) {
 		LOG_ERROR_MESSAGE("Error with pthread(): %s.\n", strerror(errno));
 		return -1;
 	}
-	LOG_DEBUG_MESSAGE("Thread created succesfully: ID %02x.\n", id);
+	LOG_DEBUG_MESSAGE("Thread created succesfully: ID %02x.\n", tid);
 
-	return id;
+	return tid;
 }
-
-
 
 
