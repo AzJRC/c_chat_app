@@ -1,5 +1,5 @@
 /* sock_server.c */
-#include "sock_util.h"
+#include "util.h"
 
 #define SRV_ADDR ""
 #define SRV_PORT 2357

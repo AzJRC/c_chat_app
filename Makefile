@@ -1,3 +1,8 @@
 all:
-		gcc sock_client.c sock_util.c -o ./bin/sock_client.o 
-		gcc sock_server.c sock_util.c -o ./bin/sock_server.o
+	gcc client.c util.c -o ./bin/client.o
+	gcc server.c util.c -o ./bin/server.o
+
+debug:
+	gcc client.c util.c -g -Wall -Wextra -o ./bin/client.o
+	gcc server.c util.c -g -Wall -Wextra -o ./bin/server.o
+
