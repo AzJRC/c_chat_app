@@ -25,48 +25,20 @@
 #define LOG_INFO_MESSAGE(msg, ...) handleLogs(INFO, msg, ##__VA_ARGS__)
 #define LOG_ERROR_MESSAGE(msg, ...) handleLogs(ERROR, msg, ##__VA_ARGS__)
 
-// Type definitions
+
 typedef enum { DEBUG, INFO, ERROR } LogLevel;
 
-
-// Struct definitions
-struct acceptedConn {
-	int sfd_client;
-	struct sockaddr_in sock_client;
-	int error;
-};
-
-struct reply_info {
-	int sockfd;
-	char *buffer;
-	size_t buffer_s;
-	int flags;
-};
-
-//Mutex
-// static pthread_mutex_t conn_list_mutex = PTHREAD_MUTEX_INITIALIZER;
-
+// struct reply_info {
+// 	int sockfd;
+// 	char *buffer;
+// 	size_t buffer_s;
+// 	int flags;
+// };
 
 // Function definitions
 void handleLogs(LogLevel level, const char *log_msg, ...);
-
-int runTCPServer(char *srv_addr, int srv_port, int backlog);
 int createTCPv4Socket();
 struct sockaddr_in *createSockaddrStruct(char *ip, int port);
-struct acceptedConn * acceptNewConn(int srv_sfd);
-int listenConn(int sfd_client);	
-
 int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size);
-
-int runThreadConnections(int sfd_srv);
-void *threadConnections(void *arg);
-
-void broadcastMessage(char *buffer, int original_sender);
-
-int runThreadReply(int dst_sfd, char *buffer, size_t buffer_size, int flag);
-void *threadReply(void *arg_reply_info);
-
-void *threadRecv(void *sfd_arg);
-void runThreadRecv(int sfd);
 
 #endif

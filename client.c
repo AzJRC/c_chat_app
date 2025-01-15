@@ -4,9 +4,22 @@
 #define SRV_ADDR "127.0.0.1"
 #define SRV_PORT 2357
 
-#define NEWCONN_CMD "//newconn\n"
-#define ENDCONN_CMD "//endconn\n"
 
+void *threadRecv(void *sfd_arg);
+void runThreadRecv(int sfd);
+
+struct client_info {
+    long uid;
+    char *name;
+};
+
+struct client_info runClientRegistration() {
+    struct client_info client;
+    client.uid = getpid();
+    client.name = "Username";
+
+    return client;
+}
 
 int main() {
 		
@@ -19,8 +32,11 @@ int main() {
 		return -1; 
 	}
 
+    // register client
+    // struct client_info client = runClientRegistration();
+    // printf("%ld\n", client.uid);
 
-	//start clientRecvThread() to receive messages assycronously
+	// start clientRecvThread() to receive messages assycronously
 	runThreadRecv(sfd);
 
 	// beginning of chat application
@@ -29,23 +45,25 @@ int main() {
 	ssize_t char_count;
 
 	while (true) {
-		if ((char_count = getline(&line, &line_s, stdin)) < 0) {
+        char_count = getline(&line, &line_s, stdin);
+		if (char_count < 0) {
+            close(sfd);
 			return -1;
 		}
 
-		// finish conversation.
-		if (strlen(line) == 1) {
-			send(sfd, ENDCONN_CMD, strlen(ENDCONN_CMD), 0);
-			break;
-		};  
-		
 		
 		if (send(sfd, line, char_count, 0) == -1) {
 			return -1;
 		}
+
+		// finish conversation.
+		if (strcmp(line, "\n") == 0) {
+			break;
+		};  
 	}	
-	
+
 	close(sfd);
+    printf(" - Connection closed by you.\n");	
 	return 0;
 }
 
