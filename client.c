@@ -7,6 +7,8 @@
 #define NEWCONN_CMD "//newconn\n"
 #define ENDCONN_CMD "//endconn\n"
 
+void runThreadRecv(int sfd);
+void *threadRecv(void *sfd_arg);
 
 int main() {
 		
@@ -59,7 +61,7 @@ void runThreadRecv(int sfd) {
 
     *sfd_ptr = sfd;  // Store the value of sfd in allocated memory
 	pthread_t id;
-	pthread_create(&id, NULL, threadRecv, sfd_ptr);
+	pthread_create(&id, NULL, (void *)threadRecv, sfd_ptr);
 }
 
 

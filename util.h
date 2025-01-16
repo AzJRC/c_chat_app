@@ -49,24 +49,8 @@ struct reply_info {
 
 // Function definitions
 void handleLogs(LogLevel level, const char *log_msg, ...);
-
 int runTCPServer(char *srv_addr, int srv_port, int backlog);
 int createTCPv4Socket();
 struct sockaddr_in *createSockaddrStruct(char *ip, int port);
-struct acceptedConn * acceptNewConn(int srv_sfd);
-int listenConn(int sfd_client);	
-
-int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size);
-
-int runThreadConnections(int sfd_srv);
-void *threadConnections(void *arg);
-
-void broadcastMessage(char *buffer, int original_sender);
-
-int runThreadReply(int dst_sfd, char *buffer, size_t buffer_size, int flag);
-void *threadReply(void *arg_reply_info);
-
-void *threadRecv(void *sfd_arg);
-void runThreadRecv(int sfd);
 
 #endif

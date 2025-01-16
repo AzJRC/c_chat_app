@@ -66,31 +66,3 @@ struct sockaddr_in *createSockaddrStruct(char *ip, int port) {
 	return addr;
 }
 
-
-int runInThread(void *(*routine)(void *), void *routine_arg, size_t arg_size) {
-	/*
-	 Helper function to run any function with any argument in a sepate thread.
-	 The function will return -1 on error or the thread id on success.
-	*/
-
-	// Allocate memory for the thread argument
-    void *routine_arg_copy = malloc(arg_size);
-    if (!routine_arg_copy) {
-		LOG_ERROR_MESSAGE("Error with malloc(): %s.\n", strerror(errno));
-        return -1;
-    }
-
-    // Copy the content of the argument into the allocated memory
-    memcpy(routine_arg_copy, routine_arg, arg_size);
-
-	pthread_t tid = pthread_create(&tid, NULL, routine, routine_arg_copy);
-	if(tid < 0) {
-		LOG_ERROR_MESSAGE("Error with pthread(): %s.\n", strerror(errno));
-		return -1;
-	}
-	LOG_DEBUG_MESSAGE("Thread created succesfully: ID %02x.\n", tid);
-
-	return tid;
-}
-
-
