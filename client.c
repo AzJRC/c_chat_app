@@ -7,8 +7,10 @@
 #define NEWCONN_CMD "//newconn\n"
 #define ENDCONN_CMD "//endconn\n"
 
-void runThreadRecv(int sfd);
+
+int runThreadRecv(int sfd);
 void *threadRecv(void *sfd_arg);
+
 
 int main() {
 		
@@ -20,7 +22,6 @@ int main() {
 		printf("- something went wrong: %s", strerror(errno));
 		return -1; 
 	}
-
 
 	//start clientRecvThread() to receive messages assycronously
 	runThreadRecv(sfd);
@@ -41,7 +42,6 @@ int main() {
 			break;
 		};  
 		
-		
 		if (send(sfd, line, char_count, 0) == -1) {
 			return -1;
 		}
@@ -52,42 +52,34 @@ int main() {
 }
 
 
-void runThreadRecv(int sfd) {
+int runThreadRecv(int sfd) {
 	int *sfd_ptr = malloc(sizeof(int));  // Allocate memory
     if (!sfd_ptr) {
         LOG_ERROR_MESSAGE("Error with malloc(): %s.\n", strerror(errno));
-        return;
+        return -1;
     }
-
     *sfd_ptr = sfd;  // Store the value of sfd in allocated memory
 	pthread_t id;
 	pthread_create(&id, NULL, (void *)threadRecv, sfd_ptr);
+    return 0;
 }
 
 
 void *threadRecv(void *sfd_arg) {
-
 	int sfd = *(int *)sfd_arg;
-	free(sfd_arg);
-
+	free(sfd_arg);  // TODO VERIFICAR ESTA MAMADA
 	char buffer[1024];
-	while(true) {
-		
+	while(true) {	
 		ssize_t char_count = recv(sfd, buffer, sizeof(buffer)-1, 0);
 		if (char_count < 0) {
 			LOG_ERROR_MESSAGE("Error with recv(): %s.\n", strerror(errno));
 			return NULL;
 		}
-
 		if (char_count == 0) break;
-
 		buffer[char_count] = 0;
 		LOG_INFO_MESSAGE("Message received: [ %s ]\n", buffer);
-
 	}
-
 	close(sfd);
-
 	return 0;
 }
 

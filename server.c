@@ -5,16 +5,23 @@
 #define SRV_PORT 2357
 #define LST_BACKLOG 2
 
+pthread_mutex_t conn_manager_mutex;
 
-int acceptNewConn(int srv_sfd, struct acceptedConn *client_conn);
+typedef struct {
+    struct acceptedConn *conn_list;
+    int conn_count;
+    int capacity;
+} connManager;
 
-void *listenConn(void *sfd_client_arg);
+typedef struct {
+    connManager *conn_manager;
+    struct acceptedConn client_conn;
+} listenConnClientWrapper;
 
 int runThreadConnections(int sfd_srv);
-
-void broadcastMessage(char *buffer, int original_sender);
-
-int runThreadReply(int dst_sfd, char *buffer, size_t buffer_size, int flag);
+int acceptNewConn(int srv_sfd, struct acceptedConn *client_conn);
+void *listenConn(void *sfd_client_arg);
+void broadcastMessage(char *buffer, int original_sender, connManager *conn_manager);
 
 
 int main() {
@@ -60,12 +67,10 @@ int runTCPServer(char *srv_addr, int srv_port, int backlog) {
 	}
 	LOG_DEBUG_MESSAGE("Address bind succesfull.\n");
 
-	// listen for incomming connections
 	if (listen(server_sfd, backlog) == -1) {
 		printf("- error with listen(): %s.\n", strerror(errno));
 		return -1;
 	}
-
 
 	LOG_DEBUG_MESSAGE("Listen for incomming connections.\n");	
 
@@ -76,10 +81,28 @@ int runTCPServer(char *srv_addr, int srv_port, int backlog) {
 // HANDLE THE TCP CONNECTIONS
 //
 
+int initConnectionsManager(connManager *conn_manager, int conn_capacity) {
+    conn_manager->conn_list = malloc(sizeof(struct acceptedConn)*conn_capacity);
+    conn_manager->conn_count = 0;
+    conn_manager->capacity = conn_capacity;
+    return 0;
+}
 
-//BUG We should not use global variables
-struct acceptedConn connections_list[10];
-int connections_count = 0;
+int addConnectionToConnectionsManager(
+        connManager *conn_manager, 
+        struct acceptedConn *client_conn) {
+    pthread_mutex_lock(&conn_manager_mutex);
+
+    //resize conn_manager if needed
+    // TODO
+
+    conn_manager->conn_list[conn_manager->conn_count] = *client_conn;
+    conn_manager->conn_count += 1;
+
+    pthread_mutex_unlock(&conn_manager_mutex);
+    return 0;
+}
+
 
 int runThreadConnections(int sfd_srv) {	
 	/*
@@ -88,8 +111,11 @@ int runThreadConnections(int sfd_srv) {
 	 corresponding thread.
 	*/
 
+    connManager conn_manager;
+    int conn_manager_capacity = 10;
+    initConnectionsManager(&conn_manager, conn_manager_capacity);
+
 	while (true) {
-        // acceptNewConn
 		struct acceptedConn client_conn;
         acceptNewConn(sfd_srv, &client_conn);
 		if (client_conn.error < 0) {
@@ -97,20 +123,23 @@ int runThreadConnections(int sfd_srv) {
 			return -1;
 		}
 		LOG_DEBUG_MESSAGE("Client connection accepted: SocketFD %d.\n", client_conn.sfd_client);
-		LOG_DEBUG_MESSAGE("Connections count: %d.\n", connections_count);
+		LOG_DEBUG_MESSAGE("Connections count: %d.\n", conn_manager.conn_count);
 
-		connections_list[connections_count] = client_conn;
-		connections_count += 1;
+        addConnectionToConnectionsManager(&conn_manager, &client_conn);
+
+        // create listenConn arg wrapper
+        listenConnClientWrapper *arg = malloc(sizeof(listenConnClientWrapper));
+        arg->conn_manager = &conn_manager;
+        arg->client_conn = client_conn;
 
 		// Run threadNewConn() from a new thread pthread_create() 
         pthread_t tid_connection;
-        pthread_create(&tid_connection, NULL, listenConn, &client_conn.sfd_client);
+        pthread_create(&tid_connection, NULL, listenConn, arg);
 
 		LOG_DEBUG_MESSAGE("Listening client connection in a new thread.\n");
 
-        pthread_detach(tid_connection);
+        pthread_detach(tid_connection);  // TODO change to pthread_join.
 	}
-
 
     return 0;
 }
@@ -127,7 +156,6 @@ int acceptNewConn(int srv_sfd, struct acceptedConn *client_conn) {
 
 	struct sockaddr_in client_addr;  // client socket information
 	unsigned int clientaddr_size = sizeof(struct sockaddr_in);  // client socket size
-
 	int sfd_client;
 	sfd_client = accept(srv_sfd, (struct sockaddr *)&client_addr, &clientaddr_size);  // accept the connection
 	if (sfd_client < 0) {
@@ -145,14 +173,19 @@ int acceptNewConn(int srv_sfd, struct acceptedConn *client_conn) {
 }
 
 
-void *listenConn(void *sfd_client_arg) {
+void *listenConn(void *listenConn_wrapper_arg) {
 	/*
 	 Process a connection by listening to a received accepted connection from `acceptedConn()` using
 	 the `listen()^ function.
 	 Loop indifinitely until the connection is closed by the client or an error arise.
 	*/
 
-    int sfd_client = *(int *)sfd_client_arg;
+    listenConnClientWrapper *client_wrapper = (listenConnClientWrapper *)listenConn_wrapper_arg;
+    connManager *conn_manager = client_wrapper->conn_manager;
+    struct acceptedConn client_conn = client_wrapper->client_conn;
+    int sfd_client = client_conn.sfd_client;
+
+    free(listenConn_wrapper_arg);
 
 	char buff_recv[1024];
 	ssize_t recv_content = 0;
@@ -173,25 +206,27 @@ void *listenConn(void *sfd_client_arg) {
 		LOG_DEBUG_MESSAGE("Client [SocketFD %d] message received: ", sfd_client);
 		printf("[ %s ]\n", buff_recv);
 
-		broadcastMessage(buff_recv, sfd_client);
+		broadcastMessage(buff_recv, sfd_client, conn_manager);
 	}
 
 	return (void *)0;
 } 
 
 
-void broadcastMessage(char *buffer, int original_sender) {
+void broadcastMessage(char *buffer, int original_sender, connManager *conn_manager) {
     /*
      Broadcast buffer to all connected clients except original_sender.
     */
 	
-	for (int i = 0; i < connections_count; i++) {
-		int client_sfd = connections_list[i].sfd_client;
+    pthread_mutex_lock(&conn_manager_mutex);
+	for (int i = 0; i < conn_manager->conn_count; i++) {
+		int client_sfd = conn_manager->conn_list[i].sfd_client;
 
 		if (client_sfd == original_sender) continue;
 		
 		send(client_sfd, buffer, strlen(buffer), 0);
 	}
+    pthread_mutex_unlock(&conn_manager_mutex);
 
 	return;
 }
