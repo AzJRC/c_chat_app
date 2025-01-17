@@ -4,6 +4,7 @@
 #define SRV_ADDR ""
 #define SRV_PORT 2357
 #define LST_BACKLOG 2
+#define DEFAULT_CONNMANAGER_INIT_CAPACITY 1
 
 pthread_mutex_t conn_manager_mutex;
 
@@ -88,18 +89,42 @@ int initConnectionsManager(connManager *conn_manager, int conn_capacity) {
     return 0;
 }
 
+int increaseConnectionsManagerCapacity(connManager *conn_manager) {
+    if (conn_manager->capacity < 1) conn_manager->capacity = 1;
+
+    LOG_DEBUG_MESSAGE("Connections Manager requested an increase capacity.\n");
+    int new_capacity = conn_manager->capacity * 2; 
+
+    struct acceptedConn *new_list = realloc(
+            conn_manager->conn_list,
+            sizeof(struct acceptedConn) * new_capacity);
+    if (!new_list) return -1;
+
+    conn_manager->conn_list = new_list;
+    conn_manager->capacity = new_capacity;
+    LOG_DEBUG_MESSAGE("Connections Manager capacity is now %d.\n", conn_manager->capacity);
+    return 0;
+}
+
 int addConnectionToConnectionsManager(
         connManager *conn_manager, 
         struct acceptedConn *client_conn) {
     pthread_mutex_lock(&conn_manager_mutex);
 
     //resize conn_manager if needed
-    // TODO
+    if (conn_manager->conn_count >= conn_manager->capacity) {
+        int increase_status = increaseConnectionsManagerCapacity(conn_manager);
+        if (increase_status < 0) {
+            pthread_mutex_unlock(&conn_manager_mutex);
+            return -1;
+        } 
+    }
 
     conn_manager->conn_list[conn_manager->conn_count] = *client_conn;
     conn_manager->conn_count += 1;
 
     pthread_mutex_unlock(&conn_manager_mutex);
+    LOG_DEBUG_MESSAGE("Connections Manager added a new connection to the list.\n");
     return 0;
 }
 
@@ -112,8 +137,7 @@ int runThreadConnections(int sfd_srv) {
 	*/
 
     connManager conn_manager;
-    int conn_manager_capacity = 10;
-    initConnectionsManager(&conn_manager, conn_manager_capacity);
+    initConnectionsManager(&conn_manager, DEFAULT_CONNMANAGER_INIT_CAPACITY);
 
 	while (true) {
 		struct acceptedConn client_conn;
@@ -122,8 +146,7 @@ int runThreadConnections(int sfd_srv) {
 			printf("- Error with AcceptNewConn(): %s.\n", strerror(errno));
 			return -1;
 		}
-		LOG_DEBUG_MESSAGE("Client connection accepted: SocketFD %d.\n", client_conn.sfd_client);
-		LOG_DEBUG_MESSAGE("Connections count: %d.\n", conn_manager.conn_count);
+		LOG_DEBUG_MESSAGE("Client connection accepted.\n");
 
         addConnectionToConnectionsManager(&conn_manager, &client_conn);
 
@@ -135,10 +158,9 @@ int runThreadConnections(int sfd_srv) {
 		// Run threadNewConn() from a new thread pthread_create() 
         pthread_t tid_connection;
         pthread_create(&tid_connection, NULL, listenConn, arg);
-
-		LOG_DEBUG_MESSAGE("Listening client connection in a new thread.\n");
-
         pthread_detach(tid_connection);  // TODO change to pthread_join.
+
+		LOG_DEBUG_MESSAGE("Connections count: [%d]\n", conn_manager.conn_count);
 	}
 
     return 0;
@@ -187,9 +209,10 @@ void *listenConn(void *listenConn_wrapper_arg) {
 
     free(listenConn_wrapper_arg);
 
+	LOG_DEBUG_MESSAGE("Listening client connection in a new thread.\n");
+
 	char buff_recv[1024];
 	ssize_t recv_content = 0;
-
 	while (true) {
 		recv_content = recv(sfd_client, buff_recv, 1024, 0);
 		if (recv_content < 0) {
